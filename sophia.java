@@ -28,6 +28,7 @@ import rts.UnitActionAssignment;
 import rts.units.Unit;
 import rts.units.UnitType;
 import rts.units.UnitTypeTable;
+import weka.core.pmml.jaxbbindings.False;
 
 public class sophia extends AIWithComputationBudget {
 
@@ -232,6 +233,11 @@ public class sophia extends AIWithComputationBudget {
             if (barracksAllay.size() > 0) {
                 maxWorkers = 2 * basesAllay.size();
             }
+            if (basesAllay.size() >= 4) {
+                maxHarvestWorkers = 4;
+                maxBarracks = 0;
+                maxWorkers = 100;
+            }
         } else if (w == 9) {
             maxBarracks = basesAllay.size();
             maxHarvestWorkers = 3;
@@ -242,9 +248,16 @@ public class sophia extends AIWithComputationBudget {
             maxHarvestWorkers = 4;
             maxWorkers = 2 * basesAllay.size() + 1;
         } else if (w == 32) {
-            maxBarracks = basesAllay.size();
-            maxHarvestWorkers = 3;
-            maxWorkers = maxHarvestWorkers + 1;
+            if (workersEnemy.size() <= 3) {
+                maxBarracks = 0;
+                maxHarvestWorkers = 0;
+                maxWorkers = maxHarvestWorkers + 10;
+            } else {
+                maxBarracks = 1;
+                maxHarvestWorkers = 1;
+                maxWorkers = maxHarvestWorkers + 2;
+            }
+
         }
 
         // if enemy don't have barracks, barracksunit for each barracks is light
@@ -259,15 +272,7 @@ public class sophia extends AIWithComputationBudget {
         if (barracksEnemy.isEmpty()) {
             barracksUnits = new ArrayList<>();
             for (int i = 0; i < barracksAllay.size(); i++) {
-                if (w == 8) {
-                    barracksUnits.add(heavyType);
-                } else if (w == 16) {
-                    barracksUnits.add(heavyType);
-                } else if (w == 32) {
-                    barracksUnits.add(heavyType);
-                } else {
-                    barracksUnits.add(rangedType);
-                }
+                barracksUnits.add(heavyType);
             }
         }
         if (w == 8) {
@@ -391,6 +396,9 @@ public class sophia extends AIWithComputationBudget {
             for (int j = 0; j < physicalGameState.getHeight(); j++) {
                 if (physicalGameState.getTerrain(i, j) == TERRAIN_WALL)
                     continue;
+                int rasterPos = i + j * physicalGameState.getWidth();
+                if (locationsTaken.contains(rasterPos))
+                    continue;
                 possiblePos.add(new Pos(i, j));
             }
         }
@@ -398,52 +406,47 @@ public class sophia extends AIWithComputationBudget {
         int bestScore = 0;
         for (Pos pos : possiblePos) {
             int score = 0;
-            // check if pos is taken
-            int rasterPos = pos.getX() + pos.getY() * physicalGameState.getWidth();
-            if (locationsTaken.contains(rasterPos)) {
-                score -= 10000;
-            } else {
-                // check if pos is near resource
-                for (Unit resource : resourcesReachable) {
-                    int d = distance(resource, pos);
-                    score -= 100 / d;
-                }
-                // check if pos is near barracks
-                for (Unit barracks : barracksAllay) {
-                    int d = distance(barracks, pos);
-                    score -= 100 / d;
-                }
-                // check if pos is near base
-                for (Unit base : basesAllay) {
-                    int d = distance(base, pos);
-                    if (d == 1) {
-                        score -= 200;
-                    } else {
-                        score += 10 / d;
-                    }
-                }
-                // if pos is next to boundary, score -= 100, if pos in corner, score -= 200
-                if (pos.getX() == 0 || pos.getX() == w - 1 || pos.getY() == 0 || pos.getY() == h - 1) {
-                    score -= 10;
-                }
-                if ((pos.getX() == 0 && pos.getY() == 0) || (pos.getX() == 0 && pos.getY() == h - 1)
-                        || (pos.getX() == w - 1 && pos.getY() == 0) || (pos.getX() == w - 1 && pos.getY() == h - 1)) {
-                    score -= 200;
-                }
-
-                // check if pos is near enemy
-                for (Unit enemy : enemyUnits) {
-                    int d = distance(enemy, pos);
-                    if (d <= 8) {
-                        score -= 100 / d;
-                    } else {
-                        score -= 50 / d;
-                    }
-                }
-
-                Unit closestWorker = getCloseUnit(pos, workersAllay);
-                score -= 10 * distance(closestWorker, pos);
+            // check if pos is near resource
+            for (Unit resource : resourcesReachable) {
+                int d = distance(resource, pos);
+                score -= 100 / d;
             }
+            // check if pos is near barracks
+            for (Unit barracks : barracksAllay) {
+                int d = distance(barracks, pos);
+                score -= 100 / d;
+            }
+            // check if pos is near base
+            for (Unit base : basesAllay) {
+                int d = distance(base, pos);
+                if (d == 1) {
+                    score -= 200;
+                } else {
+                    score += 10 / d;
+                }
+            }
+            // if pos is next to boundary, score -= 100, if pos in corner, score -= 200
+            if (pos.getX() == 0 || pos.getX() == w - 1 || pos.getY() == 0 || pos.getY() == h - 1) {
+                score -= 10;
+            }
+            if ((pos.getX() == 0 && pos.getY() == 0) || (pos.getX() == 0 && pos.getY() == h - 1)
+                    || (pos.getX() == w - 1 && pos.getY() == 0) || (pos.getX() == w - 1 && pos.getY() == h - 1)) {
+                score -= 200;
+            }
+
+            // check if pos is near enemy
+            for (Unit enemy : enemyUnits) {
+                int d = distance(enemy, pos);
+                if (d <= 8) {
+                    score -= 100 / d;
+                } else {
+                    score -= 50 / d;
+                }
+            }
+
+            Unit closestWorker = getCloseUnit(pos, workersAllay);
+            score -= 10 * distance(closestWorker, pos);
+
             if (bestPos == null || score > bestScore) {
                 bestPos = pos;
                 bestScore = score;
@@ -979,7 +982,15 @@ public class sophia extends AIWithComputationBudget {
             if (busy(worker)) {
                 continue;
             }
-            Unit closestEnemy = getClosestUnit(worker, workersEnemy);
+            List<Unit> targets = new ArrayList<>();
+            if (barracksEnemy.size() > 0) {
+                targets.addAll(barracksEnemy);
+            } else if (workersEnemy.size() > 0) {
+                targets.addAll(workersEnemy);
+            } else {
+                targets.addAll(enemyUnits);
+            }
+            Unit closestEnemy = getClosestUnit(worker, targets);
             if (closestEnemy != null) {
                 if (!attackUnitInRange(worker)) {
                     // if not in range move towards closest enemy
@@ -1028,7 +1039,9 @@ public class sophia extends AIWithComputationBudget {
                     int dir = i;
                     UnitAction possibelAction = new UnitAction(UnitAction.TYPE_PRODUCE, dir, workerType);
                     if (gameState.isUnitActionAllowed(base, possibelAction)) {
-                        possibleActions.add(possibelAction);
+                        if (base.canExecuteAction(possibelAction, gameState)) {
+                            possibleActions.add(possibelAction);
+                        }
                     }
                 }
                 if (myHarvestWorkers.size() < maxHarvestWorkers) {
@@ -1131,6 +1144,7 @@ public class sophia extends AIWithComputationBudget {
             if (busy(barracks)) {
                 continue;
             }
+
             if (resourcesUsed + barracksUnits.get(i).cost <= player.getResources()) {
                 int highestScore = -100000;
                 int highestScoreIndex = -1;
@@ -1139,8 +1153,11 @@ public class sophia extends AIWithComputationBudget {
                     int dir = j;
                     UnitAction possibelAction = new UnitAction(UnitAction.TYPE_PRODUCE, dir, barracksUnits.get(i));
                     if (gameState.isUnitActionAllowed(barracks, possibelAction)) {
-                        possibleActions.add(possibelAction);
+                        if (barracks.canExecuteAction(possibelAction, gameState)) {
+                            possibleActions.add(possibelAction);
+                        }
                     }
+
                 }
                 for (UnitAction possibleAction : possibleActions) {
                     // score for each possible action
@@ -1266,6 +1283,7 @@ public class sophia extends AIWithComputationBudget {
             if (busy(heavy)) {
                 continue;
             }
+            // if enemy is in range attack it
             if (attackUnitInRange(heavy)) {
                 continue;
             }
